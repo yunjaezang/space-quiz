@@ -107,6 +107,19 @@
     .result-summary strong { color: var(--purple); }
     .result .dots { justify-content: center; margin-top: 20px; gap: 9px; }
     .result .dot { width: 7px; height: 7px; }
+    .review { margin-top: 18px; text-align: left; }
+    .review-toggle { width: 100%; display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 13px 15px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--text); font-weight: 700; text-align: left; cursor: pointer; }
+    .review-toggle:hover { background: var(--soft); }
+    .review-toggle span:last-child { color: var(--purple); font-size: 18px; line-height: 1; transition: transform .18s; }
+    .review-toggle[aria-expanded="true"] span:last-child { transform: rotate(180deg); }
+    .review-list { display: grid; gap: 11px; margin: 12px 0 0; padding: 0; list-style: none; }
+    .review-item { padding: 15px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); }
+    .review-item h3 { margin: 0 0 10px; font-size: 14px; line-height: 1.55; }
+    .review-item p { margin: 5px 0 0; font-size: 12px; line-height: 1.7; overflow-wrap: anywhere; }
+    .review-answer { color: var(--red); }
+    .review-correct { color: var(--green); }
+    .review-explanation { padding-top: 8px; border-top: 1px solid var(--line); color: var(--muted); }
+    .review-empty { margin: 18px 0 0; padding: 13px; border-radius: 10px; background: var(--green-bg); color: var(--green); font-size: 13px; font-weight: 650; }
     .keyboard-tip { margin-top: 13px; font-size: 10px; color: var(--muted); text-align: center; }
     kbd { font-family: inherit; background: var(--surface); border: 1px solid var(--line); border-radius: 3px; padding: 1px 4px; margin: 0 2px; }
     @keyframes float { 0%, 100% { transform: translateY(0) rotate(-3deg); } 50% { transform: translateY(-7px) rotate(1deg); } }
@@ -206,6 +219,13 @@
       </div>
       <div class="result-summary" id="result-summary"></div>
       <div class="dots" id="result-dots" aria-hidden="true"></div>
+      <div class="review" id="review" hidden>
+        <button type="button" class="review-toggle" id="review-toggle" aria-expanded="false" aria-controls="review-list">
+          <span id="review-label"></span><span aria-hidden="true">⌄</span>
+        </button>
+        <ol class="review-list" id="review-list" hidden></ol>
+      </div>
+      <p class="review-empty" id="review-empty" hidden>틀린 문제가 없어요. 모두 멋지게 맞혔어요!</p>
       <button type="button" class="next" id="restart">다시 탐험하기 <span aria-hidden="true">↗</span></button>
     </section>
     <p class="keyboard-tip" id="keyboard-tip"><kbd>1</kbd>–<kbd>4</kbd> 답변 선택 <span aria-hidden="true">·</span> <kbd>Enter</kbd> 다음 문제</p>
@@ -230,6 +250,7 @@
     let score = 0;
     let answered = false;
     let history = [];
+    let answerHistory = [];
 
     function renderDots(container, active) {
       container.replaceChildren(...questions.map((_, index) => {
@@ -289,6 +310,7 @@
       const item = questions[current];
       const correct = index === item.answer;
       history.push(correct);
+      answerHistory.push(index);
       if (correct) score += 10;
       [...$("answers").children].forEach((button, i) => {
         button.disabled = true;
@@ -328,12 +350,48 @@
       $("result-description").textContent = level.description;
       $("final-score").textContent = score;
       $("result-summary").innerHTML = `10개의 목적지 탐험 완료 · <strong>${score / 10}문제 정답</strong>`;
+      const missedCount = questions.length - score / 10;
+      $("review").hidden = missedCount === 0;
+      $("review-empty").hidden = missedCount !== 0;
+      $("review-list").hidden = true;
+      $("review-toggle").setAttribute("aria-expanded", "false");
+      if (missedCount > 0) {
+        $("review-label").textContent = `오답 복습 (${missedCount}개) 펼치기`;
+        const missedItems = questions.flatMap((item, index) => {
+          if (history[index]) return [];
+          const entry = document.createElement("li");
+          entry.className = "review-item";
+          const question = document.createElement("h3");
+          question.textContent = `${index + 1}. ${item.question}`;
+          const selected = document.createElement("p");
+          selected.className = "review-answer";
+          selected.textContent = `내가 고른 답: ${item.options[answerHistory[index]]}`;
+          const correct = document.createElement("p");
+          correct.className = "review-correct";
+          correct.textContent = `정답: ${item.options[item.answer]}`;
+          const explanation = document.createElement("p");
+          explanation.className = "review-explanation";
+          explanation.textContent = `해설: ${item.explanation}`;
+          entry.append(question, selected, correct, explanation);
+          return [entry];
+        });
+        $("review-list").replaceChildren(...missedItems);
+      } else {
+        $("review-list").replaceChildren();
+      }
       $("question-count").textContent = "10 / 10";
       document.querySelector(".progress-label").lastChild.textContent = " 탐험 완료";
       $("ring").style.strokeDashoffset = 408.407 * (1 - score / 100);
       renderDots($("result-dots"), -1);
       $("result-title").focus({ preventScroll: true });
     }
+
+    $("review-toggle").addEventListener("click", () => {
+      const expanded = $("review-toggle").getAttribute("aria-expanded") !== "true";
+      $("review-toggle").setAttribute("aria-expanded", String(expanded));
+      $("review-list").hidden = !expanded;
+      $("review-label").textContent = `오답 복습 (${questions.length - score / 10}개) ${expanded ? "접기" : "펼치기"}`;
+    });
 
     $("next").addEventListener("click", () => {
       if (!answered) return;
@@ -344,6 +402,12 @@
       current = 0;
       score = 0;
       history = [];
+      answerHistory = [];
+      $("review").hidden = true;
+      $("review-empty").hidden = true;
+      $("review-list").replaceChildren();
+      $("review-list").hidden = true;
+      $("review-toggle").setAttribute("aria-expanded", "false");
       $("quiz").hidden = false;
       $("result").hidden = true;
       $("keyboard-tip").hidden = false;
