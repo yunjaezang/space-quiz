@@ -107,6 +107,10 @@
     .result-summary strong { color: var(--purple); }
     .result .dots { justify-content: center; margin-top: 20px; gap: 9px; }
     .result .dot { width: 7px; height: 7px; }
+    .copy-status { margin: 14px 0 0; color: var(--green); font-size: 13px; }
+    .copy-fallback { margin-top: 14px; text-align: left; }
+    .copy-fallback p { margin: 0 0 8px; color: var(--muted); font-size: 12px; }
+    .copy-text { width: 100%; min-height: 98px; padding: 10px; resize: vertical; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--text); font: inherit; font-size: 13px; }
     .review { margin-top: 18px; text-align: left; }
     .review-toggle { width: 100%; display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 13px 15px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--text); font-weight: 700; text-align: left; cursor: pointer; }
     .review-toggle:hover { background: var(--soft); }
@@ -219,6 +223,12 @@
       </div>
       <div class="result-summary" id="result-summary"></div>
       <div class="dots" id="result-dots" aria-hidden="true"></div>
+      <button type="button" class="next" id="copy-result">결과 복사</button>
+      <p class="copy-status" id="copy-status" role="status" aria-live="polite" aria-atomic="true" hidden></p>
+      <div class="copy-fallback" id="copy-fallback" hidden>
+        <p id="copy-fallback-message"></p>
+        <textarea class="copy-text" id="copy-text" aria-label="복사할 결과 요약" aria-describedby="copy-fallback-message" readonly></textarea>
+      </div>
       <div class="review" id="review" hidden>
         <button type="button" class="review-toggle" id="review-toggle" aria-expanded="false" aria-controls="review-list">
           <span id="review-label"></span><span aria-hidden="true">⌄</span>
@@ -250,6 +260,8 @@
     let score = 0;
     let answered = false;
     let history = [];
+    let copyRequest = 0;
+    let resultText = "";
     let answerHistory = [];
 
     function renderDots(container, active) {
@@ -350,6 +362,7 @@
       $("result-description").textContent = level.description;
       $("final-score").textContent = score;
       $("result-summary").innerHTML = `10개의 목적지 탐험 완료 · <strong>${score / 10}문제 정답</strong>`;
+      resultText = `궤도 너머 · 우주 탐험 퀴즈\n점수: ${score}/100점\n정답: ${history.filter(Boolean).length}/10문제\n${level.emoji}`;
       const missedCount = questions.length - score / 10;
       $("review").hidden = missedCount === 0;
       $("review-empty").hidden = missedCount !== 0;
@@ -386,6 +399,35 @@
       $("result-title").focus({ preventScroll: true });
     }
 
+    $("copy-result").addEventListener("click", async () => {
+      const request = ++copyRequest;
+      $("copy-status").hidden = true;
+      $("copy-status").textContent = "";
+      $("copy-fallback").hidden = true;
+      $("copy-fallback-message").textContent = "";
+      $("copy-text").value = "";
+      try {
+        if (!navigator.clipboard || typeof navigator.clipboard.writeText !== "function") {
+          $("copy-fallback-message").textContent = "이 환경에서는 자동 복사를 지원하지 않아요. 아래 내용을 직접 선택해 복사해 주세요.";
+          $("copy-text").value = resultText;
+          $("copy-fallback").hidden = false;
+          $("copy-text").focus();
+          return;
+        }
+        $("copy-status").hidden = false;
+        await navigator.clipboard.writeText(resultText);
+        if (request !== copyRequest || $("result").hidden) return;
+        $("copy-status").textContent = "복사했어요.";
+      } catch {
+        if (request !== copyRequest || $("result").hidden) return;
+        $("copy-status").hidden = true;
+        $("copy-fallback-message").textContent = "클립보드 권한이 없거나 쓰기에 실패했어요. 브라우저 권한을 확인하거나 아래 내용을 직접 선택해 복사해 주세요.";
+        $("copy-text").value = resultText;
+        $("copy-fallback").hidden = false;
+        $("copy-text").focus();
+      }
+    });
+
     $("review-toggle").addEventListener("click", () => {
       const expanded = $("review-toggle").getAttribute("aria-expanded") !== "true";
       $("review-toggle").setAttribute("aria-expanded", String(expanded));
@@ -399,6 +441,13 @@
       else { current++; showQuestion(true); }
     });
     $("restart").addEventListener("click", () => {
+      copyRequest++;
+      resultText = "";
+      $("copy-status").textContent = "";
+      $("copy-status").hidden = true;
+      $("copy-fallback-message").textContent = "";
+      $("copy-text").value = "";
+      $("copy-fallback").hidden = true;
       current = 0;
       score = 0;
       history = [];
